@@ -5,11 +5,9 @@ description: "How to integrate your application with Cl@ve using Visare's OAuth2
 
 # Integrating with Visare for Cl@ve
 
-This guide will walk you through the process of integrating your application with the Visare OAuth2 implementation for Cl@ve authentication.
+This guide provides the essential information for integrating your application with Visare's OAuth2 implementation for Cl@ve.
 
 ## Quickstart
-
-Integrating with Visare requires just a few steps to add Cl@ve authentication to your application.
 
 <Steps>
   <Step title="Register Your Application">
@@ -21,310 +19,202 @@ Integrating with Visare requires just a few steps to add Cl@ve authentication to
     - Brief description of your application
   </Step>
   
-  <Step title="Implement the Authorization Code Flow with PKCE">
-    For security reasons, Visare only supports the Authorization Code Flow with PKCE. Below are implementation examples.
+  <Step title="Choose an OAuth Library">
+    Visare implements the standard Authorization Code Flow with PKCE. You can use any OAuth2 library that supports this flow.
     
-    <CodeGroup>
-      ```javascript JavaScript
-      // 1. Generate a Code Verifier and Challenge
-      function generateCodeVerifier(length) {
-        let text = '';
-        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-        for (let i = 0; i < length; i++) {
-          text += possible.charAt(Math.floor(Math.random() * possible.length));
-        }
-        return text;
-      }
-      
-      async function generateCodeChallenge(codeVerifier) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(codeVerifier);
-        const digest = await window.crypto.subtle.digest('SHA-256', data);
-        
-        return btoa(String.fromCharCode(...new Uint8Array(digest)))
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=/g, '');
-      }
-      
-      // Generate and store values
-      const codeVerifier = generateCodeVerifier(128);
-      const codeChallenge = await generateCodeChallenge(codeVerifier);
-      sessionStorage.setItem('codeVerifier', codeVerifier);
-      
-      // 2. Redirect user to authorization endpoint
-      function redirectToAuth() {
-        const clientId = 'YOUR_CLIENT_ID';
-        const redirectUri = encodeURIComponent('YOUR_REDIRECT_URI');
-        const state = generateRandomState();
-        sessionStorage.setItem('state', state);
-        
-        // Available scopes include:
-        // - openid: Required base scope for OIDC
-        // - profile: Basic profile information (name, gender, birthdate)
-        // - email: User's email address
-        // - document: ID document information (DNI/NIE number)
-        // - address: User's registered address information
-        // - phone: User's telephone number
-        const scope = 'openid profile email';
-        
-        window.location.href = `https://auth.visare.es/authorize?` +
-          `client_id=${clientId}&` +
-          `response_type=code&` +
-          `redirect_uri=${redirectUri}&` +
-          `scope=${encodeURIComponent(scope)}&` +
-          `code_challenge=${codeChallenge}&` +
-          `code_challenge_method=S256&` +
-          `state=${state}`;
-      }
-      ```
-      
-      ```python Python
-      import secrets
-      import hashlib
-      import base64
-      import requests
-      
-      # 1. Generate a Code Verifier and Challenge
-      def generate_code_verifier(length=128):
-          return secrets.token_urlsafe(length)
-          
-      def generate_code_challenge(verifier):
-          digest = hashlib.sha256(verifier.encode('utf-8')).digest()
-          return base64.urlsafe_b64encode(digest).decode('utf-8').rstrip('=')
-          
-      # Generate and store values
-      code_verifier = generate_code_verifier()
-      code_challenge = generate_code_challenge(code_verifier)
-      
-      # 2. Create authorization URL
-      def get_authorization_url():
-          client_id = 'YOUR_CLIENT_ID'
-          redirect_uri = 'YOUR_REDIRECT_URI'
-          state = secrets.token_urlsafe(16)
-          
-          # Available scopes:
-          # - openid: Required base scope for OIDC
-          # - profile: Basic profile information (name, gender, birthdate)
-          # - email: User's email address
-          # - document: ID document information (DNI/NIE number)
-          # - address: User's registered address information
-          # - phone: User's telephone number
-          scope = 'openid profile email'
-          
-          params = {
-              'client_id': client_id,
-              'response_type': 'code',
-              'redirect_uri': redirect_uri,
-              'scope': scope,
-              'code_challenge': code_challenge,
-              'code_challenge_method': 'S256',
-              'state': state
-          }
-          
-          auth_url = 'https://auth.visare.es/authorize'
-          return auth_url, params, code_verifier, state
-      ```
-    </CodeGroup>
+    Popular libraries include:
+    - **JavaScript**: [auth0-spa-js](https://github.com/auth0/auth0-spa-js), [oidc-client-js](https://github.com/IdentityModel/oidc-client-js)
+    - **Python**: [Authlib](https://authlib.org/), [requests-oauthlib](https://github.com/requests/requests-oauthlib)
+    - **Java**: [Spring Security OAuth](https://spring.io/projects/spring-security-oauth)
+    - **PHP**: [league/oauth2-client](https://github.com/thephpleague/oauth2-client)
+    - **.NET**: [Microsoft.Identity.Web](https://github.com/AzureAD/microsoft-identity-web)
   </Step>
   
-  <Step title="Handle the Callback">
-    After the user authenticates with Cl@ve, they'll be redirected back to your application with an authorization code.
+  <Step title="Configure Your OAuth Client">
+    Configure your OAuth client using Visare's endpoints:
     
-    <CodeGroup>
-      ```javascript JavaScript
-      // Extract parameters from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      const state = urlParams.get('state');
-      
-      // Verify state to prevent CSRF attacks
-      if (state !== sessionStorage.getItem('state')) {
-        throw new Error('Invalid state parameter');
-      }
-      
-      // Exchange code for tokens
-      async function getTokens(code) {
-        const tokenResponse = await fetch('https://auth.visare.es/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            grant_type: 'authorization_code',
-            client_id: 'YOUR_CLIENT_ID',
-            client_secret: 'YOUR_CLIENT_SECRET',
-            code: code,
-            redirect_uri: 'YOUR_REDIRECT_URI',
-            code_verifier: sessionStorage.getItem('codeVerifier')
-          })
-        });
-        
-        const tokens = await tokenResponse.json();
-        return tokens;
-      }
-      ```
-      
-      ```python Python
-      # Handle callback
-      def exchange_code_for_tokens(code, code_verifier, redirect_uri):
-          token_url = 'https://auth.visare.es/token'
-          
-          data = {
-              'grant_type': 'authorization_code',
-              'client_id': 'YOUR_CLIENT_ID',
-              'client_secret': 'YOUR_CLIENT_SECRET',
-              'code': code,
-              'redirect_uri': redirect_uri,
-              'code_verifier': code_verifier
-          }
-          
-          response = requests.post(token_url, data=data)
-          return response.json()
-      ```
-    </CodeGroup>
-  </Step>
-  
-  <Step title="Use the Access Token">
-    Once you have the tokens, you can use the access token to fetch user information or access protected resources.
+    **Production Environment:**
+    ```
+    Authorization Endpoint: https://auth.visare.es/authorize
+    Token Endpoint: https://auth.visare.es/token
+    User Info Endpoint: https://api.visare.es/userinfo
+    Token Revocation Endpoint: https://auth.visare.es/revoke
+    ```
     
-    <CodeGroup>
-      ```javascript JavaScript
-      async function getUserInfo(accessToken) {
-        const userInfoResponse = await fetch('https://api.visare.es/userinfo', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-        
-        return await userInfoResponse.json();
-      }
-      ```
-      
-      ```python Python
-      def get_user_info(access_token):
-          userinfo_url = 'https://api.visare.es/userinfo'
-          headers = {'Authorization': f'Bearer {access_token}'}
-          
-          response = requests.get(userinfo_url, headers=headers)
-          return response.json()
-      ```
-    </CodeGroup>
+    **Sandbox Environment:**
+    ```
+    Authorization Endpoint: https://sandbox.auth.visare.es/authorize
+    Token Endpoint: https://sandbox.auth.visare.es/token
+    User Info Endpoint: https://sandbox.api.visare.es/userinfo
+    Token Revocation Endpoint: https://sandbox.auth.visare.es/revoke
+    ```
   </Step>
 </Steps>
 
-## Authentication Flow Explained
+## Visare-Specific Requirements
 
-Visare implements the Authorization Code Flow with PKCE (Proof Key for Code Exchange), which is the most secure OAuth2 flow and works for all application types.
+When integrating with Visare, keep these requirements in mind:
 
-### Authorization Request Parameters
+<CardGroup cols={2}>
+  <Card title="PKCE Required" icon="shield-check">
+    Visare **requires** PKCE for all OAuth2 flows, even for server-side applications, for maximum security.
+  </Card>
+  <Card title="TLS 1.2+" icon="lock">
+    All requests to Visare endpoints must use TLS 1.2 or higher.
+  </Card>
+  <Card title="State Parameter" icon="random">
+    The `state` parameter must be used in authorization requests to prevent CSRF attacks.
+  </Card>
+  <Card title="Redirect URIs" icon="arrow-right">
+    Redirect URIs must match exactly (including trailing slashes) with those registered in the developer portal.
+  </Card>
+</CardGroup>
 
-When redirecting users to the authorization endpoint, you'll need to include these parameters:
+## Available Scopes
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `client_id` | Yes | Your application's client ID obtained during registration |
-| `response_type` | Yes | Must be set to `code` for the authorization code flow |
-| `redirect_uri` | Yes | The URI where the user will be redirected after authentication (must match one of your registered URIs) |
-| `scope` | Yes | Space-separated list of permissions your app is requesting |
-| `code_challenge` | Yes | The SHA-256 hash of your code verifier, base64url-encoded |
-| `code_challenge_method` | Yes | Must be set to `S256` to indicate SHA-256 hashing |
-| `state` | Yes | A random string to prevent CSRF attacks, should be verified when handling the callback |
-| `login_hint` | No | Pre-fills the user's identification (e.g., DNI/NIE) |
-| `ui_locales` | No | Preferred languages for the UI, comma-separated (e.g., `es,ca,en`) |
+Visare offers the following scopes, corresponding to identity information available from Cl@ve:
 
-<Frame>
-  <img src="/images/auth-flow-diagram.png" alt="Authorization Code Flow with PKCE" />
-</Frame>
+| Scope | Description | Sample Data |
+|-------|-------------|-------------|
+| `openid` | **Required** base scope for OIDC | `{"sub": "12345678Z"}` |
+| `profile` | Basic profile information | `{"name": "María García", "given_name": "María", "family_name": "García", "birthdate": "1980-01-01", "gender": "female"}` |
+| `email` | Email address | `{"email": "maria.garcia@example.com", "email_verified": true}` |
+| `document` | ID document information | `{"document_type": "DNI", "document_number": "12345678Z"}` |
+| `address` | Registered address | `{"address": {"street_address": "Calle Gran Vía 123", "locality": "Madrid", "region": "Madrid", "postal_code": "28013", "country": "ES"}}` |
+| `phone` | Phone number | `{"phone_number": "+34600000000", "phone_number_verified": true}` |
 
-The flow works as follows:
+## Authorization Parameters
 
-1. **Your application** generates a code verifier and its derived code challenge
-2. **Your application** redirects the user to Visare's authorization endpoint with the code challenge
-3. **Visare** redirects the user to **Cl@ve** where they authenticate using their Spanish digital identity
-4. After successful authentication, **Cl@ve** redirects back to **Visare**
-5. **Visare** redirects to your application with an authorization code
-6. **Your application** exchanges this code and the original code verifier for tokens
-7. **Your application** can now use the access token to retrieve user information
+In addition to standard OAuth2 parameters, Visare supports these optional parameters:
 
-This flow ensures that even if the authorization code is intercepted, it cannot be used without the code verifier that only your application possesses.
+| Parameter | Description |
+|-----------|-------------|
+| `login_hint` | Pre-fills the user's DNI/NIE during authentication |
+| `ui_locales` | Sets the preferred UI language (`es`, `ca`, `gl`, `eu`, or `en`) |
+| `acr_values` | Authentication level requested (`loa:basic` or `loa:substantial`) |
 
-## Available Endpoints
+Example:
+```
+https://auth.visare.es/authorize?
+  client_id=YOUR_CLIENT_ID&
+  response_type=code&
+  ...
+  &login_hint=12345678Z
+  &ui_locales=es
+  &acr_values=loa:substantial
+```
 
-| Endpoint | URL | Purpose |
-|----------|-----|---------|
-| Authorization | `https://auth.visare.es/authorize` | Initiates the authentication process |
-| Token | `https://auth.visare.es/token` | Exchanges authorization code for tokens |
-| User Info | `https://api.visare.es/userinfo` | Retrieves authenticated user information |
-| Token Revocation | `https://auth.visare.es/revoke` | Revokes an access or refresh token |
+## Sandbox Testing
 
-## User Information
+The sandbox environment simulates Cl@ve verification for testing purposes.
 
-The userinfo endpoint returns information about the authenticated user based on the scopes requested:
+### Test Controls
 
+You can control the sandbox behavior using the `test_scenario` parameter:
+
+| Test Scenario | Description |
+|---------------|-------------|
+| `approval` | Simulates a successful authentication (default) |
+| `rejection` | Simulates user rejection of authentication |
+| `expired_session` | Simulates a session timeout during authentication |
+
+Example:
+```
+https://sandbox.auth.visare.es/authorize?
+  client_id=YOUR_CLIENT_ID&
+  ...
+  &test_scenario=rejection
+```
+
+### Test Data
+
+When using the sandbox userinfo endpoint with obtained test tokens, you'll receive consistent mock data based on your requested scopes.
+
+## Error Responses
+
+Visare follows standard OAuth2 error responses. Common errors include:
+
+| Error Code | Description |
+|------------|-------------|
+| `invalid_request` | Missing required parameter or malformed request |
+| `unauthorized_client` | Client not authorized to use the requested flow |
+| `access_denied` | User denied the authentication request |
+| `invalid_scope` | Requested scope is invalid or unsupported |
+| `server_error` | Unexpected error on the server |
+
+Example error response:
 ```json
 {
-  "sub": "12345678A",  // User's unique identifier (usually their DNI/NIE)
-  "name": "María García López",
-  "given_name": "María",
-  "family_name": "García López",
-  "email": "maria.garcia@example.com"
+  "error": "invalid_grant",
+  "error_description": "Authorization code expired"
 }
 ```
 
-## Testing Environment
+## Sample Integration
 
-Visare provides a sandbox environment for testing your integration:
-
-```
-Authorization Endpoint: https://sandbox.auth.visare.es/authorize
-Token Endpoint: https://sandbox.auth.visare.es/token
-User Info Endpoint: https://sandbox.api.visare.es/userinfo
-```
-
-The sandbox environment allows you to test your integration without connecting to the actual Cl@ve system. Key features include:
-
-- **Simulated Verifications**: The sandbox simulates the Cl@ve verification process
-- **Test Controls**: You can simulate both approval and rejection scenarios
-- **Test Tokens**: Upon successful authentication, you'll receive test tokens
-- **Mock Data**: When using these sandbox tokens with the userinfo endpoint, you'll receive predictable test data for each requested scope
-
-### Sandbox Test Data
-
-The sandbox returns different test data based on the scopes you request:
-
-| Scope | Sample Data Returned |
-|-------|----------------------|
-| profile | `{"name": "Test User", "given_name": "Test", "family_name": "User", "birthdate": "1980-01-01", "gender": "not specified"}` |
-| email | `{"email": "test.user@example.com", "email_verified": true}` |
-| document | `{"document_type": "DNI", "document_number": "12345678Z"}` |
-| address | `{"address": {"street_address": "Calle Test 123", "locality": "Madrid", "region": "Madrid", "postal_code": "28001", "country": "ES"}}` |
-| phone | `{"phone_number": "+34600000000", "phone_number_verified": true}` |
-
-### Testing Rejection Scenarios
-
-To simulate a rejection scenario in the sandbox, add the `test_scenario=rejection` parameter to your authorization request:
-
+<Accordion title="Simple Web Integration with auth0-spa-js">
 ```javascript
-window.location.href = `https://sandbox.auth.visare.es/authorize?` +
-  // other parameters... +
-  `test_scenario=rejection`;
+import createAuth0Client from '@auth0/auth0-spa-js';
+
+const auth0 = await createAuth0Client({
+  domain: 'auth.visare.es',
+  client_id: 'YOUR_CLIENT_ID',
+  redirect_uri: window.location.origin + '/callback',
+  audience: 'https://api.visare.es',
+  scope: 'openid profile email document',
+  useRefreshTokens: true
+});
+
+// Login with redirect
+const login = async () => {
+  await auth0.loginWithRedirect();
+};
+
+// Handle callback
+const handleCallback = async () => {
+  await auth0.handleRedirectCallback();
+  const user = await auth0.getUser();
+  console.log(user);
+};
 ```
-
-## Security Best Practices
-
-<Accordion title="Always Validate Tokens">
-  Always validate tokens received from Visare to ensure they are legitimate and haven't been tampered with.
 </Accordion>
 
-<Accordion title="Store Tokens Securely">
-  Store tokens securely and never expose them in client-side code. For web applications, consider using HttpOnly cookies.
-</Accordion>
+<Accordion title="Express Backend Integration with Passport.js">
+```javascript
+const passport = require('passport');
+const { Strategy } = require('passport-oauth2');
+const express = require('express');
+const app = express();
 
-<Accordion title="Implement Proper CSRF Protection">
-  Always use the state parameter to prevent cross-site request forgery attacks.
-</Accordion>
+// Configure OAuth strategy
+passport.use(new Strategy({
+  authorizationURL: 'https://auth.visare.es/authorize',
+  tokenURL: 'https://auth.visare.es/token',
+  clientID: 'YOUR_CLIENT_ID',
+  clientSecret: 'YOUR_CLIENT_SECRET',
+  callbackURL: 'https://your-app.com/callback',
+  scope: ['openid', 'profile', 'email'],
+  pkce: true, // Ensure PKCE is enabled
+  state: true // Enable state parameter for CSRF protection
+}, (accessToken, refreshToken, profile, done) => {
+  // Fetch user info
+  fetch('https://api.visare.es/userinfo', {
+    headers: { 'Authorization': `Bearer ${accessToken}` }
+  })
+    .then(res => res.json())
+    .then(userInfo => {
+      return done(null, userInfo);
+    })
+    .catch(err => done(err));
+}));
 
-<Accordion title="Use Short-lived Access Tokens">
-  Configure your client to request short-lived access tokens and use refresh tokens to get new ones when needed.
+// Auth routes
+app.get('/login', passport.authenticate('oauth2'));
+app.get('/callback', passport.authenticate('oauth2', {
+  successRedirect: '/profile',
+  failureRedirect: '/login'
+}));
+```
 </Accordion>
 
 ## Need Help?
